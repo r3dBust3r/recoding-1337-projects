@@ -5,16 +5,20 @@ from itertools import count
 
 class Drone:
     _id = 1
-    def __init__(self, start_zone, end_zone):
+    def __init__(self, start_zone, end_zone, path):
         self.id = Drone._id
         self.name = f'D{self.id}'
         self.start_zone = start_zone
         self.end_zone = end_zone
         self.curr_zone = start_zone
-        self.path = []
+        self.path = path
         self.pos_idx = 0
 
         Drone._id += 1
+
+    @property
+    def delivered(self):
+        return self.curr_zone == self.end_zone
 
 
 class Connection:
@@ -34,16 +38,18 @@ class Zone:
         self.drones = []
         self.zone = ''
         self.cost = 0
+        self.max_drones = 1
 
         if 'zone' in metadata: self.zone = metadata['zone']
         else: self.zone = 'normal'
+
+        if 'max_drones' in metadata:
+            self.max_drones = metadata['max_drones']
 
         if   self.zone == 'priority':     self.cost = 0.99
         elif self.zone == 'normal':       self.cost = 1
         elif self.zone == 'restricted':   self.cost = 2
         elif self.zone == 'blocked':      self.cost = 999
-
-
 
 
     def add_neighbor(self, zone):
@@ -114,13 +120,15 @@ class Flyin:
 
 
     def create_drones(self):
-        for _ in range(self.parser.nb_drones):
-            d = Drone(self.start_zone, self.end_zone)
+        paths = self._find_paths()
+
+        for i in range(self.parser.nb_drones):
+            d = Drone(self.start_zone, self.end_zone, paths[i % len(paths)][1])
             self.drones.append(d)
             self.start_zone.drones.append(d)
 
 
-    def find_paths(self):
+    def _find_paths(self):
         paths = []
         counter = count()
 
@@ -149,41 +157,48 @@ class Flyin:
 
                 heapq.heappush(queue, (new_cost, next(counter), new_path))
 
-
-        for p in paths:
-            c, path = p
-            print(c, ' -> '.join( [z.name for z in path] ))
+        return paths
 
 
-
-        # heapq.heappop()
-        # heapq.heappush()
-
-        # start = self.start_zone
-        # queue = [start]
-        # visited = []
-
-        # path = []
-
-        # while queue:
-        #     current = queue.pop(0)
-
-        #     if current in visited:
-        #         continue
-
-        #     neighbors = current.neighbors
-
-        #     for neighbor in neighbors:
-        #         if neighbor in visited:
-        #             continue
-
-        #         queue.append(neighbor)
+    def _all_delivered(self):
+        for d in self.drones:
+            if d.curr_zone != self.end_zone:
+                return False
+        return True
 
 
-        #     path.append(current)
-        #     visited.append(current)
 
-        # print([z.name for z in path])
+    def simulate(self):
+        turns = ''
+        while not self._all_delivered():
+            move = ''
+
+            for d in self.drones:
+                if d.delivered:
+                    continue
+
+                curr_zone = d.curr_zone
+                next_zone = d.path[d.pos_idx + 1]
+
+
+                if next_zone not in [self.start_zone, self.end_zone]:
+                    if len(next_zone.drones) == next_zone.max_drones:
+                        continue
+
+                # moving the drone
+                curr_zone.drones.remove(d)
+                next_zone.drones.append(d)
+                d.curr_zone = next_zone
+                d.pos_idx += 1
+                move += f'{d.name}-{next_zone.name} '
+
+            turns += move.strip() + '\n'
+
+        turns = turns.strip()
+
+        print(turns)
+
+
 
 
 
@@ -204,7 +219,7 @@ def main():
     flyin.create_connections()
     flyin.create_graph()
     flyin.create_drones()
-    flyin.find_paths()
+    flyin.simulate()
 
 
 
